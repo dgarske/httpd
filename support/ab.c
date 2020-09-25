@@ -158,6 +158,7 @@
 
 #if defined(HAVE_OPENSSL)
 
+#include <wolfssl/options.h>
 #include <openssl/rsa.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
@@ -2554,7 +2555,9 @@ int main(int argc, const char * const argv[])
                     meth = TLSv1_2_client_method();
 #endif
                 } else if (strncasecmp(opt_arg, "TLS1", 4) == 0) {
+#if !defined(NO_OLD_TLS) && defined(WOLFSSL_ALLOW_TLSV10)
                     meth = TLSv1_client_method();
+#endif
                 }
 #else /* #if OPENSSL_VERSION_NUMBER < 0x10100000L */
                 meth = TLS_client_method();

@@ -82,6 +82,7 @@
 #include "ap_expr.h"
 
 /* OpenSSL headers */
+#include <wolfssl/options.h>
 #include <openssl/opensslv.h>
 #if (OPENSSL_VERSION_NUMBER >= 0x10001000)
 /* must be defined before including ssl.h */

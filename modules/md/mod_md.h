@@ -17,6 +17,7 @@
 #ifndef mod_md_mod_md_h
 #define mod_md_mod_md_h
 
+#include <wolfssl/options.h>
 #include <openssl/evp.h>
 #include <openssl/x509v3.h>
 

@@ -477,6 +477,100 @@ AC_DEFUN([APACHE_REQUIRE_CXX],[
   fi
 ])
 
+dnl Check for wolfSSL
+ENABLED_WOLFSSL=no
+AC_MSG_NOTICE([----------------------------------------])
+AC_MSG_CHECKING([for wolfSSL])
+AC_ARG_WITH([wolfssl],
+  [AC_HELP_STRING([--with-wolfssl@<:@=DIR@:>@],
+    [Include wolfSSL support (default no, yes=/usr/local)]
+  )],
+  [
+    if test "x$withval" != "xno" ; then
+      dnl local variables
+      ap_wolfssl_mod_ldflags=""
+      ap_wolfssl_mod_cflags=""
+      ap_wolfssl_libs=""
+
+      dnl backup flags
+      saved_CPPFLAGS="$CPPFLAGS"
+      saved_LDFLAGS="$LDFLAGS"
+      saved_LIBS="$LIBS"
+
+      dnl determine wolfSSL location and flags
+      if test "x$withval" == "xyes" || test "x$withval" == "x" ; then
+          ap_wolfssl_mod_ldflags="-L/usr/local/lib"
+          ap_wolfssl_mod_cflags="-I/usr/local/include -I/usr/local/include/wolfssl"
+      else
+        if test -d "$withval/lib" ; then
+            ap_wolfssl_mod_ldflags="-L$withval/lib"
+        else
+            ap_wolfssl_mod_ldflags="-L$withval"
+        fi
+        if test -d "$withval/include"; then
+            ap_wolfssl_mod_cflags="-I$withval/include -I$withval/include/wolfssl"
+        else
+            ap_wolfssl_mod_cflags="-I$withval -I$withval/wolfssl"
+        fi
+      fi
+      ap_wolfssl_libs="-lwolfssl"
+      ap_wolfssl_mod_cflags="$ap_wolfssl_mod_cflags -DUSE_WOLFSSL"
+      
+      dnl test for wolfSSL
+      CPPFLAGS="$CPPFLAGS $ap_wolfssl_mod_cflags"
+      LDFLAGS="$LDFLAGS $ap_wolfssl_mod_ldflags"
+      LIBS="$LIBS $ap_wolfssl_libs"
+      AC_LINK_IFELSE([
+          AC_LANG_PROGRAM(
+          [[
+            #include <wolfssl/options.h>
+            #include <wolfssl/ssl.h>
+          ]], 
+          [[ 
+            wolfSSL_Init();
+          ]])
+        ],
+        [ wolfssl_linked=yes ],
+        [ wolfssl_linked=no ]
+      )
+
+      dnl restore flags
+      CPPFLAGS="$saved_CPPFLAGS"
+      LIBS="$saved_LIBS"
+      LDFLAGS="$saved_LDFLAGS"
+
+      if test "x$wolfssl_linked" == "xno" ; then
+        dnl handle library not found error
+        AC_MSG_ERROR([wolfSSL Library not found.
+            If it's already installed, specify its path using --with-wolfssl=/dir/])
+
+      else
+        ENABLED_WOLFSSL=yes
+
+        dnl make sure the SSL module is included
+        ac_cv_openssl=yes
+
+        AC_DEFINE(HAVE_WOLFSSL, 1, [Define if wolfSSL is available])
+
+        dnl add lib to module LDFLAGS and LIBS
+        MOD_LDFLAGS="$MOD_LDFLAGS $ap_wolfssl_libs"
+        LIBS="$LIBS $ap_wolfssl_libs"
+        APR_SETVAR(ab_LIBS, [$MOD_LDFLAGS])
+        APACHE_SUBST(ab_CFLAGS)
+        APACHE_SUBST(ab_LIBS)
+
+        dnl add CFLAGS and LDFLAGS to module and global
+        MOD_CFLAGS="$MOD_CFLAGS $ap_wolfssl_mod_cflags"
+        MOD_LDFLAGS="$MOD_LDFLAGS $ap_wolfssl_mod_ldflags"
+        CPPFLAGS="$CPPFLAGS $ap_wolfssl_mod_cflags"
+        LDFLAGS="$LDFLAGS $ap_wolfssl_mod_ldflags"
+      fi
+    fi
+  ]
+)
+AC_MSG_RESULT([$ENABLED_WOLFSSL])
+
+
 dnl
 dnl APACHE_CHECK_OPENSSL
 dnl

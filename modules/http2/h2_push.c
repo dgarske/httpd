@@ -23,6 +23,7 @@
 #include <apr_time.h>
 
 #ifdef H2_OPENSSL
+#include <wolfssl/options.h>
 #include <openssl/sha.h>
 #endif
 
