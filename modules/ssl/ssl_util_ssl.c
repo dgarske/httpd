@@ -467,12 +467,14 @@ BOOL modssl_X509_match_name(apr_pool_t *p, X509 *x509, const char *name,
 DH *ssl_dh_GetParamFromFile(const char *file)
 {
     DH *dh = NULL;
+#ifndef HAVE_FIPS
     BIO *bio;
 
     if ((bio = BIO_new_file(file, "r")) == NULL)
         return NULL;
     dh = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
     BIO_free(bio);
+#endif
     return (dh);
 }
 

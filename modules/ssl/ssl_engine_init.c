@@ -93,6 +93,7 @@ static int DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g)
 }
 #endif
 
+#ifndef HAVE_FIPS
 /*
  * Grab well-defined DH parameters from OpenSSL, see the BN_get_rfc*
  * functions in <openssl/bn.h> for all available primes.
@@ -133,16 +134,21 @@ static struct dhparam {
     { BN_get_rfc2409_prime_1024, NULL, 0 }
 };
 
+#endif /* !HAVE_FIPS */
+
 static void init_dh_params(void)
 {
+#ifndef HAVE_FIPS
     unsigned n;
 
     for (n = 0; n < sizeof(dhparams)/sizeof(dhparams[0]); n++)
         dhparams[n].dh = make_dh_params(dhparams[n].prime);
+#endif
 }
 
 static void free_dh_params(void)
 {
+#ifndef HAVE_FIPS
     unsigned n;
 
     /* DH_free() is a noop for a NULL parameter, so these are harmless
@@ -152,6 +158,7 @@ static void free_dh_params(void)
         DH_free(dhparams[n].dh);
         dhparams[n].dh = NULL;
     }
+#endif
 }
 
 /* Hand out the same DH structure though once generated as we leak
@@ -163,12 +170,14 @@ static void free_dh_params(void)
  * to our copy. */
 DH *modssl_get_dh_params(unsigned keylen)
 {
+#ifndef HAVE_FIPS
     unsigned n;
 
     for (n = 0; n < sizeof(dhparams)/sizeof(dhparams[0]); n++)
         if (keylen >= dhparams[n].min)
             return dhparams[n].dh;
         
+#endif
     return NULL; /* impossible to reach. */
 }
 
@@ -216,6 +225,21 @@ static apr_status_t modssl_fips_cleanup(void *data)
 /*
  *  Per-module initialization
  */
+
+#ifdef HAVE_FIPS
+static void myFipsCb(int ok, int err, const char* hash)
+{
+    printf("in my Fips callback, ok = %d, err = %d\n", ok, err);
+    printf("message = %s\n", wc_GetErrorString(err));
+    printf("hash = %s\n", hash);
+
+    if (err == IN_CORE_FIPS_E) {
+        printf("In core integrity hash check failure, copy above hash\n");
+        printf("into verifyCore[] in fips_test.c and rebuild\n");
+    }
+}
+#endif /* HAVE_FIPS */
+
 apr_status_t ssl_init_Module(apr_pool_t *p, apr_pool_t *plog,
                              apr_pool_t *ptemp,
                              server_rec *base_server)
@@ -225,6 +249,11 @@ apr_status_t ssl_init_Module(apr_pool_t *p, apr_pool_t *plog,
     server_rec *s;
     apr_status_t rv;
     apr_array_header_t *pphrases;
+
+#ifdef HAVE_FIPS
+    wolfCrypt_SetCb_fips(myFipsCb);
+    //wolfSSL_Debugging_ON();
+#endif
 
     if (SSLeay() < MODSSL_LIBRARY_VERSION) {
         ap_log_error(APLOG_MARK, APLOG_WARNING, 0, base_server, APLOGNO(01882)
