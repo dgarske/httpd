@@ -1258,6 +1258,10 @@ static apr_status_t ssl_init_server_certs(server_rec *s,
 #ifndef HAVE_SSL_CONF_CMD
     SSL *ssl;
 #endif
+#ifdef WOLFSSL_STATIC_EPHEMERAL
+    const char staticKeyECC[] = "/usr/local/apache2/ecc-secp256r1.pem";
+    const char staticKeyDH[]  = "/usr/local/apache2/dh-ffdhe2048.pem";
+#endif
 
     /* no OpenSSL default prompts for any of the SSL_CTX_use_* calls, please */
     SSL_CTX_set_default_passwd_cb(mctx->ssl_ctx, ssl_no_passwd_prompt_cb);
@@ -1332,6 +1336,23 @@ static apr_status_t ssl_init_server_certs(server_rec *s,
                          "do not match", key_id, certfile, keyfile);
             return APR_EGENERAL;
         }
+
+#ifdef WOLFSSL_STATIC_EPHEMERAL
+        /* Set a fixed ephemeral key for testing only */
+        /* Allows use of sniffer to decrypt data if ephemeral key is known */
+        if (wolfSSL_CTX_set_ephemeral_key(mctx->ssl_ctx, WC_PK_TYPE_ECDH,
+            staticKeyECC, 0, WOLFSSL_FILETYPE_PEM) != 0) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, APLOGNO(02563)
+                "Error loading static ephemeral key %s", staticKeyECC);
+            /* do not exit on failure */
+        }
+        if (wolfSSL_CTX_set_ephemeral_key(mctx->ssl_ctx, WC_PK_TYPE_DH,
+            staticKeyDH, 0, WOLFSSL_FILETYPE_PEM) != 0) {
+            ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, APLOGNO(02563)
+                "Error loading static ephemeral key %s", staticKeyDH);
+            /* do not exit on failure */
+        }
+#endif
 
 #ifdef HAVE_SSL_CONF_CMD
         /* 
