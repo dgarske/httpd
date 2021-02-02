@@ -159,12 +159,12 @@
 #if defined(HAVE_OPENSSL)
 
 #include <wolfssl/options.h>
+#include <openssl/ssl.h>
 #include <openssl/rsa.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
-#include <openssl/ssl.h>
 #include <openssl/rand.h>
 #define USE_SSL
 #define SK_NUM(x) sk_X509_num(x)
