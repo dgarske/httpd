@@ -32,6 +32,73 @@
 #include "mpm_common.h"
 #include "mod_md.h"
 
+#ifdef USE_ETSI_CLIENT
+    /* Support for ETSI Key Manager */
+    #include <wolfkeymgr/mod_etsi.h>
+
+    static EtsiClientCtx* gEtsiClient;
+
+    #ifndef ETSI_CLIENT_KEY_FILE
+    /* demo values */
+    #define ETSI_TIMEOUT_MS       2
+    #define ETSI_CLIENT_HOST      "localhost"
+    #define ETSI_CLIENT_PORT      8119
+    #define ETSI_CLIENT_KEY_FILE  "/usr/local/apache2/client-key.pem"
+    #define ETSI_CLIENT_KEY_PASS  "wolfssl"
+    #define ETSI_CLIENT_CERT_FILE "/usr/local/apache2/client-cert.pem"
+    #define ETSI_CLIENT_CA_FILE   "/usr/local/apache2/ca-cert.pem"
+    #endif
+
+    int apache_etsi_client_get(SSL* ssl, server_rec *s)
+    {
+        int ret = -1;
+        EtsiClientType type = ETSI_CLIENT_GET;
+        byte    response[ETSI_MAX_RESPONSE_SZ];
+        word32  responseSz = (word32)sizeof(response);
+        
+        /* setup key manager connection */
+        if (gEtsiClient == NULL) {
+            gEtsiClient = wolfEtsiClientNew();
+            if (gEtsiClient) {
+                wolfEtsiClientAddCA(gEtsiClient, ETSI_CLIENT_CA_FILE);
+                wolfEtsiClientSetKey(gEtsiClient,
+                    ETSI_CLIENT_KEY_FILE, ETSI_CLIENT_KEY_PASS,
+                    ETSI_CLIENT_CERT_FILE, WOLFSSL_FILETYPE_PEM);
+
+                if (wolfEtsiClientConnect(gEtsiClient, ETSI_CLIENT_HOST,
+                    ETSI_CLIENT_PORT, ETSI_TIMEOUT_MS) != 0) {
+                    ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, APLOGNO(02563)
+                        "Error connecting to ETSI server! Skipping ETSI support");
+                    
+                    wolfEtsiClientFree(gEtsiClient);
+                    gEtsiClient = NULL;
+                }
+            }
+        }
+        if (gEtsiClient) {
+            ret = wolfEtsiClientGet(gEtsiClient, type, NULL, ETSI_TIMEOUT_MS,
+                response, &responseSz);
+            if (ret == 0) {
+                if (ssl) {
+                    ret = wolfSSL_set_ephemeral_key(ssl,
+                        WC_PK_TYPE_ECDH, response, responseSz,
+                        WOLFSSL_FILETYPE_ASN1);
+                }
+            }
+            if (ret != 0) {
+                ap_log_error(APLOG_MARK, APLOG_ERR, 0, s, APLOGNO(02563)
+                    "Error loading ETSI static ephemeral key");
+                /* do not exit on failure */
+
+                /* cleanup */
+                wolfEtsiClientFree(gEtsiClient);
+                gEtsiClient = NULL;
+            }
+        }
+        return ret;
+    }
+#endif
+
 static apr_status_t ssl_init_ca_cert_path(server_rec *, apr_pool_t *, const char *,
                                           STACK_OF(X509_NAME) *, STACK_OF(X509_INFO) *);
 
@@ -252,8 +319,8 @@ apr_status_t ssl_init_Module(apr_pool_t *p, apr_pool_t *plog,
 
 #ifdef HAVE_FIPS
     wolfCrypt_SetCb_fips(myFipsCb);
-    //wolfSSL_Debugging_ON();
 #endif
+    //wolfSSL_Debugging_ON();
 
     if (SSLeay() < MODSSL_LIBRARY_VERSION) {
         ap_log_error(APLOG_MARK, APLOG_WARNING, 0, base_server, APLOGNO(01882)
@@ -1282,10 +1349,6 @@ static apr_status_t ssl_init_server_certs(server_rec *s,
 #ifndef HAVE_SSL_CONF_CMD
     SSL *ssl;
 #endif
-#ifdef WOLFSSL_STATIC_EPHEMERAL
-    const char staticKeyECC[] = "/usr/local/apache2/ecc-secp256r1.pem";
-    const char staticKeyDH[]  = "/usr/local/apache2/dh-ffdhe2048.pem";
-#endif
 
     /* no OpenSSL default prompts for any of the SSL_CTX_use_* calls, please */
     SSL_CTX_set_default_passwd_cb(mctx->ssl_ctx, ssl_no_passwd_prompt_cb);
@@ -1401,7 +1464,22 @@ static apr_status_t ssl_init_server_certs(server_rec *s,
             return APR_EGENERAL;
         }
 
+#ifdef USE_ETSI_CLIENT
+        /* use only ECDH cipher suites / key shares */
+        wolfSSL_CTX_UseSupportedCurve(mctx->ssl_ctx, WOLFSSL_ECC_SECP256R1);
+
+        if (apache_etsi_client_get(NULL, s) == 0) {
+            /* success getting ETSI key */
+        }
+    #ifdef WOLFSSL_STATIC_EPHEMERAL
+        else
+    #endif
+#endif /* USE_ETSI_CLIENT */
 #ifdef WOLFSSL_STATIC_EPHEMERAL
+    {
+        const char staticKeyECC[] = "/usr/local/apache2/ecc-secp256r1.pem";
+        const char staticKeyDH[]  = "/usr/local/apache2/dh-ffdhe2048.pem";
+
         /* Set a fixed ephemeral key for testing only */
         /* Allows use of sniffer to decrypt data if ephemeral key is known */
         if (wolfSSL_CTX_set_ephemeral_key(mctx->ssl_ctx, WC_PK_TYPE_ECDH,
@@ -1416,7 +1494,8 @@ static apr_status_t ssl_init_server_certs(server_rec *s,
                 "Error loading static ephemeral key %s", staticKeyDH);
             /* do not exit on failure */
         }
-#endif
+    }
+#endif /* WOLFSSL_STATIC_EPHEMERAL */
 
 #ifdef HAVE_SSL_CONF_CMD
         /* 
@@ -1766,6 +1845,13 @@ static apr_status_t ssl_init_proxy_certs(server_rec *s,
 static void ssl_init_ctx_cleanup(modssl_ctx_t *mctx)
 {
     MODSSL_CFG_ITEM_FREE(SSL_CTX_free, mctx->ssl_ctx);
+
+#ifdef USE_ETSI_CLIENT
+    if (gEtsiClient) {
+        wolfEtsiClientFree(gEtsiClient);
+        gEtsiClient = NULL;
+    }
+#endif
 
 #ifdef HAVE_SRP
     if (mctx->srp_vbase != NULL) {

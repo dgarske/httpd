@@ -580,6 +580,10 @@ static int ssl_engine_disable(conn_rec *c)
     return ssl_engine_set(c, NULL, 0, 0);
 }
 
+#ifdef USE_ETSI_CLIENT
+    extern int apache_etsi_client_get(SSL* ssl, server_rec *s);
+#endif
+
 int ssl_init_ssl_connection(conn_rec *c, request_rec *r)
 {
     SSLSrvConfigRec *sc;
@@ -620,6 +624,11 @@ int ssl_init_ssl_connection(conn_rec *c, request_rec *r)
 
         return DECLINED; /* XXX */
     }
+
+#ifdef USE_ETSI_CLIENT
+    apache_etsi_client_get(sslconn->ssl, c);
+    wolfSSL_UseKeyShare(sslconn->ssl, WOLFSSL_ECC_SECP256R1);
+#endif
 
     rc = ssl_run_pre_handshake(c, ssl, sslconn->is_proxy ? 1 : 0);
     if (rc != OK && rc != DECLINED) {
