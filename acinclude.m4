@@ -514,8 +514,8 @@ AC_ARG_WITH([wolfssl],
             ap_wolfssl_mod_cflags="-I$withval -I$withval/wolfssl"
         fi
       fi
-      ap_wolfssl_libs="-lwolfssl"
-      ap_wolfssl_mod_cflags="$ap_wolfssl_mod_cflags -DUSE_WOLFSSL"
+      ap_wolfssl_libs="-lwolfssl -lwolfkeymgr"
+      ap_wolfssl_mod_cflags="$ap_wolfssl_mod_cflags -DUSE_WOLFSSL -DUSE_ETSI_CLIENT"
       
       dnl test for wolfSSL
       CPPFLAGS="$CPPFLAGS $ap_wolfssl_mod_cflags"
