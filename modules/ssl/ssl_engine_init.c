@@ -52,9 +52,8 @@
     int apache_etsi_client_get(SSL* ssl, server_rec *s)
     {
         int ret = -1;
-        EtsiClientType type = ETSI_CLIENT_GET;
-        byte    response[ETSI_MAX_RESPONSE_SZ];
-        word32  responseSz = (word32)sizeof(response);
+        EtsiKey key;
+        memset(&key, 0, sizeof(key));
         
         /* setup key manager connection */
         if (gEtsiClient == NULL) {
@@ -76,12 +75,15 @@
             }
         }
         if (gEtsiClient) {
-            ret = wolfEtsiClientGet(gEtsiClient, type, NULL, ETSI_TIMEOUT_MS,
-                response, &responseSz);
+            ret = wolfEtsiClientGet(gEtsiClient, &key, ETSI_KEY_TYPE_SECP256R1, 
+                NULL /* fingerprint */, NULL /* contextStr */, ETSI_TIMEOUT_MS);
             if (ret == 0) {
                 if (ssl) {
+                    byte* keyBuf = NULL;
+                    word32 keySz = 0;
+                    wolfEtsiKeyGet(&key, &keyBuf, &keySz);
                     ret = wolfSSL_set_ephemeral_key(ssl,
-                        WC_PK_TYPE_ECDH, response, responseSz,
+                        WC_PK_TYPE_ECDH, keyBuf, keySz,
                         WOLFSSL_FILETYPE_ASN1);
                 }
             }
